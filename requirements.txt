@@ -1,0 +1,7 @@
+# Mission control web GCS
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# MAVLink link (used by the server and every script)
+pymavlink>=2.4
+pyserial>=3.5
