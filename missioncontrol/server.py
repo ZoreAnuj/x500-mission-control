@@ -44,6 +44,39 @@ ACKS = deque(maxlen=6)
 mav = None
 LOCK = threading.Lock()   # serialize MAVLink writes (reader thread reads; commands write)
 
+# Failsafe policy for a transmitter-less airframe: the SiK link is the only lifeline,
+# so the radio failsafe is disabled and replaced by the GCS-heartbeat failsafe (LAND).
+# The dashboard's HOLD-TO-KILL is the manual stop; FS_GCS is the automatic one.
+GCS_HEARTBEAT_HZ = 2      # must stay well under FS_GCS_TIMEOUT (default 5 s)
+FS_GCS_ACTION_LAND = 5    # FS_GCS_ENABLE = 5 -> "Enabled Always Land"
+
+
+def set_failsafe():
+    """Configure the FC for no-RC operation: radio failsafe off, GCS failsafe = LAND."""
+    with LOCK:
+        for name, val in (("FS_THR_ENABLE", 0), ("FS_GCS_ENABLE", FS_GCS_ACTION_LAND)):
+            mav.mav.param_set_send(mav.target_system, mav.target_component,
+                                   name.encode(), float(val),
+                                   mavutil.mavlink.MAV_PARAM_TYPE_INT32)
+            time.sleep(0.05)
+    print("-- no-RC failsafe set: FS_THR_ENABLE=0, FS_GCS_ENABLE=5 (link-loss=LAND)", flush=True)
+
+
+def gcs_heartbeat():
+    """Send a GCS heartbeat to the vehicle at GCS_HEARTBEAT_HZ. Without this the
+    GCS-heartbeat failsafe never activates — and once armed, if these stop for
+    FS_GCS_TIMEOUT (~5 s) the FC LANDs. Runs for the life of the server."""
+    while True:
+        m = mav
+        if m is not None:
+            try:
+                with LOCK:
+                    m.mav.heartbeat_send(mavutil.mavlink.MAV_TYPE_GCS,
+                                         mavutil.mavlink.MAV_AUTOPILOT_INVALID, 0, 0, 0)
+            except Exception:
+                pass
+        time.sleep(1.0 / GCS_HEARTBEAT_HZ)
+
 
 def set_stream_rates():
     """SiK @57600 is bandwidth-limited — request modest, deliberate rates."""
@@ -166,7 +199,8 @@ def rate_setter():
         time.sleep(0.5)
     if mav is not None:
         set_stream_rates()
-        print(f"-- heartbeat from sys={mav.target_system}; stream rates requested", flush=True)
+        set_failsafe()
+        print(f"-- heartbeat from sys={mav.target_system}; stream rates + no-RC failsafe set", flush=True)
 
 
 def open_link():
@@ -209,6 +243,7 @@ def startup():
     """Serve immediately; open the link in the background (UI shows LINK LOST until heartbeat)."""
     print(f"opening {PORT}@{BAUD}...", flush=True)
     threading.Thread(target=reader, daemon=True).start()
+    threading.Thread(target=gcs_heartbeat, daemon=True).start()   # no-RC lifeline
     open_link()
     print("-- serving http://127.0.0.1:8090  (telemetry fills in once the drone is on)", flush=True)
 

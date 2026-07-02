@@ -71,13 +71,20 @@ Then open **http://127.0.0.1:8090** in your browser.
 
 Each is self-contained — `python scripts/<name>.py`. Close Mission Planner / the mission-control server first (the COM port is exclusive).
 
+All scripts default to **`/dev/ttyUSB0`** (Linux) and accept a port arg, e.g. `python scripts/x500_first_flight.py /dev/ttyUSB0` (or `com13` on Windows). The calibration/flight scripts stream **GCS heartbeats** so the no-transmitter `FS_GCS` failsafe doesn't fire — see NOTES.
+
 | Script | Purpose |
 |--------|---------|
-| `x500_motor_test.py` | Spin all 4 motors at low throttle (`DO_MOTOR_TEST`). **Props off.** |
-| `x500_first_flight.py` | Arm → GUIDED → takeoff → brief hover → land → disarm. `--nogps` flag for GPS-denied. |
+| `x500_first_flight.py` | Robust GUIDED **takeoff → hold 2 m → land**. Preflight quality gates (sats/HDOP/EKF), **drift guard → auto-LAND**, press **ENTER to STOP→LAND**, no-RC failsafe. `--force` / `--nogps` flags. |
+| `x500_accel_cal.py` | Interactive **6-point accelerometer** cal + level trim (drives the FC over the lossy SiK link). |
+| `x500_compass_cal.py` | Onboard **magnetometer** calibration with live progress. |
+| `x500_motor_direction.py` | Per-motor **direction + airflow** check (catches an inverted prop). Props-on ≤15%. |
+| `x500_esc_cal.py` | **ESC calibration** (PWM ESCs, no RC) via `ESC_CALIBRATION=3`. **Props off.** |
+| `x500_motor_test.py` | Spin **all 4** motors together at low throttle to compare RPM. |
 | `x500_fakegps_flight.py` | Inject a synthetic GPS so the EKF gets a fix **indoors**, then fly. (Drifts — see NOTES.) |
 | `x500_gps_monitor.py` | Live GPS fix / sats / HDOP watcher; flags the moment it's ready to fly. |
-| `x500_compass_cal.py` | Onboard magnetometer calibration with live progress. |
+
+See **[docs/BRINGUP_CHECKLIST.md](docs/BRINGUP_CHECKLIST.md)** for the full post-prop-change bring-up order and **[docs/MAVLINK_REFERENCE.md](docs/MAVLINK_REFERENCE.md)** for the MAVLink/ArduCopter command reference.
 
 ### Diagnostics (`scripts/diagnostics/`)
 | Script | Purpose |
@@ -91,10 +98,10 @@ Each is self-contained — `python scripts/<name>.py`. Close Mission Planner / t
 
 ## ⚠️ Heads-up / safety (read before flying)
 
-- **Props OFF** for bench and motor tests. Spinning motors with a loose prop will flip/crash the vehicle.
-- **RC transmitter ON** with a kill switch for *any* flight — ArduCopter's **radio failsafe disarms** if the TX is off, ~1 s after arming.
-- **GUIDED needs a 3D GPS fix.** Indoors it won't arm/takeoff. Use real GPS outdoors, or the fake-GPS path (which **drifts** — no real position feedback; cage/tether it).
-- **GUIDED takeoff is gentle** — throttle ramps over ~3–4 s to reach hover thrust. A too-short airborne window lands before it ever lifts.
+- **Props OFF** for ESC calibration and any bench test where you're not deliberately checking thrust. **ESC cal drives motors to full throttle** — props must be off.
+- **No RC transmitter on this build.** The radio failsafe is disabled (`FS_THR_ENABLE=0`) and replaced by the **GCS-heartbeat failsafe** (`FS_GCS_ENABLE=5` → LAND): if the ground link drops *or the controlling script stops*, the vehicle LANDs itself. The manual kill is the web UI **HOLD-TO-KILL**, and `x500_first_flight.py` adds an **ENTER = STOP → LAND** in-terminal abort. See NOTES.
+- **GUIDED needs a good position estimate.** Outdoors with a solid GPS lock (≥10 sats, HDOP ≤ ~1.5) it holds tightly; the flight script **gates on this** and refuses to arm otherwise. Indoors without GPS it won't hold position — use the fake-GPS path (which **drifts** — cage/tether it).
+- **GUIDED takeoff is gentle** — throttle ramps over ~3–4 s. `x500_first_flight.py` climb-watches to altitude (doesn't cut the window short) and pre-checks that `MOT_THST_HOVER` is realistic so it lifts firmly instead of tipping. A too-low hover-throttle estimate makes a weak, tippy liftoff (see NOTES).
 - **The kill switch force-disarms** (`MAV_CMD_COMPONENT_ARM_DISARM`, `param2=21196`). This works **in flight**, i.e. it will drop the vehicle. Emergency use only.
 - **One program owns the COM port.** Mission Control and the scripts are mutually exclusive — `Disconnect` in the UI, or stop one before starting the other.
 - **Port 8000 may be blocked** on some Windows setups (endpoint security); the server uses **8090**.

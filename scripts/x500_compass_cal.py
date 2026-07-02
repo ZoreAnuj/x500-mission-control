@@ -8,11 +8,24 @@ Rotate the drone slowly so every side (nose, tail, each wing tip, top, bottom)
 points straight down at the ground in turn — keep turning until it hits 100%.
 """
 import sys
+import threading
 import time
 from pymavlink import mavutil
 
-PORT = "COM13"
+PORT = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyUSB0"   # COM13 on Windows
 BAUD = 57600
+
+_hb_run = True
+
+def heartbeat_thread(m):
+    """Keep the no-RC GCS-heartbeat failsafe (FS_GCS) satisfied during cal."""
+    while _hb_run:
+        try:
+            m.mav.heartbeat_send(mavutil.mavlink.MAV_TYPE_GCS,
+                                 mavutil.mavlink.MAV_AUTOPILOT_INVALID, 0, 0, 0)
+        except Exception:
+            pass
+        time.sleep(0.5)
 
 
 def main():
@@ -21,6 +34,7 @@ def main():
     if m.wait_heartbeat(timeout=20) is None:
         print("NO HEARTBEAT", flush=True); sys.exit(1)
     print("-- connected", flush=True)
+    threading.Thread(target=heartbeat_thread, args=(m,), daemon=True).start()
 
     # Start magnetometer calibration on all compasses
     print("starting compass calibration...", flush=True)
