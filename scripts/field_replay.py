@@ -29,6 +29,7 @@ import math
 import sys
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -333,7 +334,7 @@ def yaw_to(m, st, setpt, yaw_target, timeout=8):
 def do_replay(m, st, acts, rec_yaw0, hz, out):
     """Stream the episode through the shim. Returns the reason replay ended."""
     dt = 1.0 / hz
-    while st["pos"] is None:                 # need a NED fix to seed the setpoint
+    while st["pos"] is None or st["att"] is None:   # need NED pos + attitude first
         beat(m)
         poll(m, st)
         time.sleep(0.05)
@@ -429,7 +430,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--connect", default="COM13")
     ap.add_argument("--baud", type=int, default=57600)
-    ap.add_argument("--dataset", default=r"D:\lucky_drone_il\data\drone_hoop_30hz_v5")
+    ap.add_argument("--episode-file", default=None,
+                    help="standalone episode parquet (default: bundled data/drone_hoop_ep276.parquet)")
+    ap.add_argument("--dataset", default=None,
+                    help="full LeRobot dataset dir (alternative to --episode-file, for other episodes)")
     ap.add_argument("--episode", type=int, default=276)
     ap.add_argument("--hz", type=float, default=10.0)
     ap.add_argument("--alt", type=float, default=2.0)
@@ -442,11 +446,15 @@ def main():
     replay = a.hover <= 0
     acts = rec_yaw0 = None
     if replay:
-        df = pd.read_parquet(f"{a.dataset}/data/chunk-000/file-000.parquet",
-                             columns=["episode_index", "action", "observation.state"])
+        if a.dataset:
+            src = f"{a.dataset}/data/chunk-000/file-000.parquet"
+        else:
+            src = a.episode_file or str(
+                Path(__file__).resolve().parent.parent / "data" / "drone_hoop_ep276.parquet")
+        df = pd.read_parquet(src, columns=["episode_index", "action", "observation.state"])
         ep = df[df["episode_index"] == a.episode]
         if not len(ep):
-            sys.exit(f"episode {a.episode} not found")
+            sys.exit(f"episode {a.episode} not in {src}")
         acts = np.stack(ep["action"].values).astype(float)
         s0 = np.stack(ep["observation.state"].values)[0]
         rec_yaw0 = math.atan2(float(s0[2]), float(s0[3]))

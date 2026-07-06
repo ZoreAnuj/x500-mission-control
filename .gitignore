@@ -16,3 +16,6 @@ Thumbs.db
 *.log
 *.tlog
 *.bin
+
+# Run outputs (generated: CSVs, plots, videos)
+runs/
