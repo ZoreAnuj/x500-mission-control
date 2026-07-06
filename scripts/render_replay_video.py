@@ -39,12 +39,15 @@ ax0.legend(loc="upper left"); ax0.set_title("top-down"); ax0.grid(alpha=0.3)
 ax1.set_xlabel("t (s)"); ax1.set_ylabel("up (m)")
 ax1.legend(loc="upper left"); ax1.set_title("altitude (rel)"); ax1.grid(alpha=0.3)
 
-# fixed limits from the full run (no autoscale jitter in the video)
+# fixed limits from the full run (no autoscale jitter in the video);
+# square window so aspect=equal never rescales the view mid-video
 allxy = np.vstack([sp[:, :2], p[:, :2]])
-pad = 0.5
-ax0.set_xlim(allxy[:, 1].min() - pad, allxy[:, 1].max() + pad)
-ax0.set_ylim(allxy[:, 0].min() - pad, allxy[:, 0].max() + pad)
-ax0.set_aspect("equal", adjustable="datalim")
+ce = (allxy[:, 1].min() + allxy[:, 1].max()) / 2
+cn = (allxy[:, 0].min() + allxy[:, 0].max()) / 2
+half = max(allxy[:, 1].ptp(), allxy[:, 0].ptp()) / 2 + 0.5
+ax0.set_xlim(ce - half, ce + half)
+ax0.set_ylim(cn - half, cn + half)
+ax0.set_aspect("equal", adjustable="box")
 ax1.set_xlim(0, t[-1] + 0.5)
 allz = np.hstack([-sp[:, 2], -p[:, 2]])
 ax1.set_ylim(allz.min() - 0.3, allz.max() + 0.3)
