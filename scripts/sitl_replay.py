@@ -104,6 +104,9 @@ def main():
     ap.add_argument("--hz", type=float, default=30.0)
     ap.add_argument("--alt", type=float, default=2.0)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--wind", default=None, metavar="SPD,DIR,TURB",
+                    help="SITL wind: speed m/s, direction deg (from), turbulence "
+                         "m/s. Austin TX typical: 4,165,2")
     a = ap.parse_args()
 
     df = pd.read_parquet(f"{a.dataset}/data/chunk-000/file-000.parquet",
@@ -122,6 +125,16 @@ def main():
     st = {"pos": None, "vel": None, "att": None, "rel_alt": 0.0, "acks": {},
           "ekf": 0, "armed": False, "mode": -1}
     set_rates(m, max(30, int(a.hz)))
+
+    if a.wind:
+        spd, wdir, turb = (float(x) for x in a.wind.split(","))
+        for name, val in (("SIM_WIND_SPD", spd), ("SIM_WIND_DIR", wdir),
+                          ("SIM_WIND_TURB", turb)):
+            m.mav.param_set_send(m.target_system, m.target_component,
+                                 name.encode(), val,
+                                 mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+            time.sleep(0.1)
+        print(f"-- SITL wind: {spd:g} m/s from {wdir:g} deg, turb {turb:g} m/s")
 
     # EKF position ready -> GUIDED (verified) -> arm -> takeoff (retry, re-arm)
     PRED_POS_HORIZ_ABS = 512
