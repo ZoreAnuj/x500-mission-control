@@ -55,6 +55,12 @@ def drain(m, st):
             st["att"] = (msg.roll, msg.pitch, msg.yaw)
         elif t == "GLOBAL_POSITION_INT":
             st["rel_alt"] = msg.relative_alt / 1000.0
+        elif t == "EKF_STATUS_REPORT":
+            st["ekf"] = msg.flags
+        elif t == "HEARTBEAT":
+            st["armed"] = bool(msg.base_mode
+                               & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+            st["mode"] = msg.custom_mode
         elif t == "STATUSTEXT":
             print(f"   [fc] {msg.text}")
         elif t == "COMMAND_ACK":
@@ -74,7 +80,8 @@ def wait_for(m, st, cond, timeout, what):
 def set_rates(m, hz):
     for mid in (mavutil.mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED,
                 mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE,
-                mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT):
+                mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
+                mavutil.mavlink.MAVLINK_MSG_ID_EKF_STATUS_REPORT):
         m.mav.command_long_send(m.target_system, m.target_component,
                                 mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
                                 mid, int(1e6 / hz), 0, 0, 0, 0, 0)
@@ -112,26 +119,45 @@ def main():
           f"{clip_pct:.1f}% dx clipped, recorded yaw0 {math.degrees(rec_yaw0):.0f} deg")
 
     m = connect(a.connect, a.baud)
-    st = {"pos": None, "vel": None, "att": None, "rel_alt": 0.0, "acks": {}}
+    st = {"pos": None, "vel": None, "att": None, "rel_alt": 0.0, "acks": {},
+          "ekf": 0, "armed": False, "mode": -1}
     set_rates(m, max(30, int(a.hz)))
 
-    # GUIDED -> arm (retry while prearm settles) -> takeoff
-    m.set_mode(m.mode_mapping()["GUIDED"])
-    print("-- arming (retries while prearm clears)...")
-    ARM = mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM
-    for i in range(40):
-        m.mav.command_long_send(m.target_system, m.target_component, ARM, 0,
-                                1, 0, 0, 0, 0, 0, 0)
-        time.sleep(1.5)
+    # EKF position ready -> GUIDED (verified) -> arm -> takeoff (retry, re-arm)
+    PRED_POS_HORIZ_ABS = 512
+    print("-- waiting for EKF position estimate...")
+    wait_for(m, st, lambda s: s["ekf"] & PRED_POS_HORIZ_ABS, 120, "EKF position")
+    guided = m.mode_mapping()["GUIDED"]
+    print("-- setting GUIDED...")
+    while st["mode"] != guided:      # setting mode too early gets ignored -> verify
+        m.set_mode(guided)
+        time.sleep(0.5)
         drain(m, st)
-        if st["acks"].get(ARM) == 0:
-            break
-    else:
-        raise SystemExit("arm rejected after 60 s (check prearm STATUSTEXT above)")
+    ARM = mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM
+
+    def arm():
+        for _ in range(40):
+            m.mav.command_long_send(m.target_system, m.target_component, ARM, 0,
+                                    1, 0, 0, 0, 0, 0, 0)
+            time.sleep(1.5)
+            drain(m, st)
+            if st["armed"]:
+                return
+        raise SystemExit("arm rejected after 60 s (see prearm STATUSTEXT above)")
+
+    print("-- arming...")
+    arm()
     print("-- armed; takeoff")
-    m.mav.command_long_send(m.target_system, m.target_component,
-                            mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0,
-                            0, 0, 0, 0, 0, 0, a.alt)
+    for _ in range(10):
+        if not st["armed"]:          # auto-disarmed while takeoff was rejected
+            arm()
+        m.mav.command_long_send(m.target_system, m.target_component,
+                                mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0,
+                                0, 0, 0, 0, 0, 0, a.alt)
+        time.sleep(2.0)
+        drain(m, st)
+        if st["rel_alt"] > 0.5:
+            break
     wait_for(m, st, lambda s: s["rel_alt"] >= 0.9 * a.alt, 60, "takeoff altitude")
     time.sleep(3)  # let the hover settle
     drain(m, st)
