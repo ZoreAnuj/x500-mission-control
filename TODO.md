@@ -1,0 +1,24 @@
+# TODO — next field test (2026-07-07)
+
+## Confirm the yaw-rate fix on real hardware
+The ep276 replay flew the **East-mirror** of the sim because the yaw command ran away
+(0.5 s-lookahead absolute-yaw cumulated on the fast real yaw controller — see
+`docs/REPLAY_RESULTS.md`). Fix is committed (**yaw-rate feed-forward, default-on**),
+**offline-verified but not yet flown.** Tomorrow's flight is the confirmation.
+
+**Expected:** the default (fixed) run now flies **WEST** to match the sim; the
+`--yaw-abs` run reproduces the **East** mirror.
+
+- [ ] Preflight: props on, compass OK, GPS 3D lock (≥10 sats, HDOP ≤1.5), battery charged
+- [ ] Geofence: `FENCE_ENABLE=1`, `FENCE_RADIUS=15`, `FENCE_ALT_MAX=6`
+- [ ] **Clearance ≥6 m to BOTH West and East** — the fixed run goes West, the `--yaw-abs` run goes East
+- [ ] Hover baseline: `python field_replay.py --hover 60`  (note real drift)
+- [ ] **A — fix (default):** `python field_replay.py --episode 276 --hz 10 --alt 2`  → expect **WEST**
+- [ ] **B — old behavior:** `python field_replay.py --episode 276 --hz 10 --alt 2 --yaw-abs`  → expect **EAST mirror**
+- [ ] Analyze both: `python analyze_replay.py results/<csv> --dataset <ds> --episode 276 --hz 10`
+      → the fix run should show **East end ≈ −4 m** and **divergence-vs-reference drop from ~8 m to <~1 m**
+- [ ] ENTER-to-land ready; `python watch_replay.py results/<csv>` preview running
+- [ ] Set `MOT_HOVER_LEARN=2` to trim the ~0.3 m altitude overshoot seen on the first flight
+
+Once **A flies West**, the yaw-rate shim is validated → carry it into the Phase-3 policy loop
+(the policy emits only Δyaw, so it needs this same fix).
