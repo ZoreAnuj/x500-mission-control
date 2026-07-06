@@ -172,44 +172,42 @@ def main():
         if abs(wrap(st["att"][2] - rec_yaw0)) < math.radians(3):
             break
 
-    # replay
+    # replay — rows streamed to disk per tick so a viewer can tail the file live
     out = a.out or f"replay_ep{a.episode:03d}.csv"
     dt = 1.0 / a.hz
     print(f"-- replaying {len(acts)} actions @ {a.hz:g} Hz -> {out}")
-    rows = []
     t0 = time.time()
-    for k, act in enumerate(acts):
-        drain(m, st)
-        yaw = st["att"][2]
-        d = np.clip(act[:3], -CLIP_POS, CLIP_POS)
-        dyaw = float(np.clip(act[3], -CLIP_YAW, CLIP_YAW))
-        cy, sy = math.cos(yaw), math.sin(yaw)
-        dn = np.array([cy * d[0] - sy * d[1], sy * d[0] + cy * d[1], d[2]])
-        v = dn / LOOKAHEAD_S
-        n = float(np.linalg.norm(v))
-        if n > VMAX:
-            v *= VMAX / n
-        setpt = setpt + v * dt
-        yaw_cmd = wrap(yaw + dyaw)
-        send_target(m, setpt, v, yaw_cmd)
-        rows.append([k, time.time() - t0, *act, *setpt, *v, yaw_cmd,
-                     *st["pos"], *st["vel"], *st["att"]])
-        # pace to hz (absolute schedule, no cumulative slip)
-        lag = t0 + (k + 1) * dt - time.time()
-        if lag > 0:
-            time.sleep(lag)
-    hz_act = len(acts) / (time.time() - t0)
-    print(f"-- done, achieved {hz_act:.1f} Hz; landing")
-    m.set_mode(m.mode_mapping()["LAND"])
-
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["tick", "t", "ax", "ay", "az", "ayaw",
                     "sp_n", "sp_e", "sp_d", "v_n", "v_e", "v_d", "yaw_cmd",
                     "p_n", "p_e", "p_d", "vel_n", "vel_e", "vel_d",
                     "roll", "pitch", "yaw"])
-        w.writerows(rows)
-    print(f"-- wrote {out} ({len(rows)} rows, {hz_act:.1f} Hz achieved)")
+        for k, act in enumerate(acts):
+            drain(m, st)
+            yaw = st["att"][2]
+            d = np.clip(act[:3], -CLIP_POS, CLIP_POS)
+            dyaw = float(np.clip(act[3], -CLIP_YAW, CLIP_YAW))
+            cy, sy = math.cos(yaw), math.sin(yaw)
+            dn = np.array([cy * d[0] - sy * d[1], sy * d[0] + cy * d[1], d[2]])
+            v = dn / LOOKAHEAD_S
+            n = float(np.linalg.norm(v))
+            if n > VMAX:
+                v *= VMAX / n
+            setpt = setpt + v * dt
+            yaw_cmd = wrap(yaw + dyaw)
+            send_target(m, setpt, v, yaw_cmd)
+            w.writerow([k, round(time.time() - t0, 4), *act, *setpt, *v, yaw_cmd,
+                        *st["pos"], *st["vel"], *st["att"]])
+            f.flush()
+            # pace to hz (absolute schedule, no cumulative slip)
+            lag = t0 + (k + 1) * dt - time.time()
+            if lag > 0:
+                time.sleep(lag)
+    hz_act = len(acts) / (time.time() - t0)
+    print(f"-- done, achieved {hz_act:.1f} Hz; landing")
+    m.set_mode(m.mode_mapping()["LAND"])
+    print(f"-- wrote {out} ({len(acts)} rows)")
 
 
 if __name__ == "__main__":
