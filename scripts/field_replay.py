@@ -428,7 +428,7 @@ def do_hover(m, st, secs):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--connect", default="COM13")
+    ap.add_argument("--connect", default="/dev/ttyUSB0")   # Windows: COM13 ; SITL: tcp:127.0.0.1:5760
     ap.add_argument("--baud", type=int, default=57600)
     ap.add_argument("--episode-file", default=None,
                     help="standalone episode parquet (default: bundled data/drone_hoop_ep276.parquet)")
