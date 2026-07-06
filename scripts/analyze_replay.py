@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 LOOKAHEAD_S, CLIP_POS, CLIP_YAW, VMAX = 0.5, 0.5, 0.3, 1.5
+NATIVE_HZ = 30
 
 
 def reference(acts, yaw_rec, hz):
@@ -35,6 +36,8 @@ def main():
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--episode", type=int, required=True)
     ap.add_argument("--hz", type=float, default=30.0)
+    ap.add_argument("--stride", type=int, default=0,
+                    help="dataset subsample (0 = auto: round(30 / hz)); must match the replay")
     ap.add_argument("--plot", default=None, help="output png (default <csv>.png)")
     a = ap.parse_args()
 
@@ -42,8 +45,9 @@ def main():
     df = pd.read_parquet(f"{a.dataset}/data/chunk-000/file-000.parquet",
                          columns=["episode_index", "action", "observation.state"])
     ep = df[df["episode_index"] == a.episode]
-    acts = np.stack(ep["action"].values).astype(float)[:len(log)]
-    st = np.stack(ep["observation.state"].values)[:len(log)]
+    stride = a.stride or max(1, round(NATIVE_HZ / a.hz))
+    acts = np.stack(ep["action"].values).astype(float)[::stride][:len(log)]
+    st = np.stack(ep["observation.state"].values)[::stride][:len(log)]
     yaw_rec = np.arctan2(st[:, 2], st[:, 3])
 
     flown = log[["p_n", "p_e", "p_d"]].to_numpy()

@@ -24,6 +24,7 @@ LOOKAHEAD_S = 0.5          # action = body waypoint over this horizon (dataset d
 CLIP_POS = 0.5             # live-inference clips (parity with play_cmenc_imle_v1.py)
 CLIP_YAW = 0.3
 VMAX = 1.5
+NATIVE_HZ = 30            # dataset native rate (drone_hoop_30hz_v5)
 # type_mask: set bit = IGNORE. Use pos+vel+yaw -> ignore accel(6,7,8), force(9), yaw_rate(11)
 USE_POS_VEL_YAW = (7 << 6) | (1 << 9) | (1 << 11)   # 3008 = 0xBC0
 
@@ -107,6 +108,9 @@ def main():
     ap.add_argument("--wind", default=None, metavar="SPD,DIR,TURB",
                     help="SITL wind: speed m/s, direction deg (from), turbulence "
                          "m/s. Austin TX typical: 4,165,2")
+    ap.add_argument("--stride", type=int, default=0,
+                    help="subsample dataset actions (0 = auto: round(30 / hz)). "
+                         "SiK-rate rehearsal: --hz 10 gives stride 3.")
     a = ap.parse_args()
 
     df = pd.read_parquet(f"{a.dataset}/data/chunk-000/file-000.parquet",
@@ -117,9 +121,12 @@ def main():
     acts = np.stack(ep["action"].values).astype(float)
     s0 = np.stack(ep["observation.state"].values)[0]
     rec_yaw0 = math.atan2(float(s0[2]), float(s0[3]))
+    stride = a.stride or max(1, round(NATIVE_HZ / a.hz))
+    acts = acts[::stride]   # SiK-rate rehearsal: keep wall-clock + per-step motion true
     clip_pct = float((np.abs(acts[:, 0]) > CLIP_POS).mean() * 100)
-    print(f"-- episode {a.episode}: {len(acts)} frames ({len(acts)/30:.1f} s), "
-          f"{clip_pct:.1f}% dx clipped, recorded yaw0 {math.degrees(rec_yaw0):.0f} deg")
+    print(f"-- episode {a.episode}: {len(acts)} actions @ {a.hz:g} Hz "
+          f"(stride {stride}, {len(acts)/a.hz:.1f} s), {clip_pct:.1f}% dx clipped, "
+          f"recorded yaw0 {math.degrees(rec_yaw0):.0f} deg")
 
     m = connect(a.connect, a.baud)
     st = {"pos": None, "vel": None, "att": None, "rel_alt": 0.0, "acks": {},
