@@ -42,3 +42,35 @@ North exact; East lagged 0.33 m (normal control lag at speed). Path ran mostly E
 
 ### Verdict
 The replay **faithfully reproduced the dataset trajectory** — sub-metre tracking throughout (0.21 m mean horizontal), full episode flown, clean modest attitudes, no altitude sag. The only deviation is a harmless ~0.3 m steady altitude overshoot from `MOT_THST_HOVER` being a touch high; `MOT_HOVER_LEARN=2` will refine it over more flights.
+
+---
+
+## Follow-up (2026-07-06): the path was the East-**mirror** of the sim — yaw runaway
+
+The tracking view above (flown vs commanded) is perfect, but it hid a real bug: against
+the dataset's **recorded-yaw reference**, the flight flew the East-mirror.
+
+| ep276 endpoint | North | East |
+|---|---|---|
+| Dataset reference (intended) | +2.20 m | **−4.14 m (West)** |
+| Real flown | +1.57 m | **+4.05 m (East)** |
+| SITL, same script | +1.35 m | −4.5 m (West, matches sim) |
+
+**Root cause — yaw runaway, not a frame/compass issue.** The shim commanded
+`yaw = live_yaw + Δyaw`, where Δyaw is a 0.5 s **look-ahead** delta — correct only if the
+yaw controller *lags* ~0.5 s. Real yaw is fast enough to reach the setpoint each tick, so
+the look-ahead deltas **cumulate**: yaw swept **−90° → +64° (+154°)** vs the intended
+**−90° → −61° (+29°)**. The over-rotated heading rotates the forward motion the wrong way
+→ East. SITL's slow default yaw lagged, stayed correct, and hid it. Evidence: three-way
+yaw-sweep (dataset +29°, SITL +16°, real +154°) and an offline sim reproducing East under
+fast yaw.
+
+**Fix (`field_replay.py`, default-on, offline-verified).** Command the yaw **rate**
+(`yaw_rate = Δyaw / lookahead`, `type_mask` 1984) instead of an absolute look-ahead
+heading — integrates once, correct total turn, independent of yaw-controller speed, and
+symmetric with the velocity feed-forward already used for position. Offline it flies
+**West for both fast and slow yaw**. `--yaw-abs` restores the old behavior for an A/B.
+The same fix will be needed for the Phase-3 policy shim (the policy also emits only Δyaw).
+
+**Status: awaiting real-flight confirmation** — fly `--episode 276` (rate, default) vs
+`--episode 276 --yaw-abs`; the default should now fly West, matching the sim.

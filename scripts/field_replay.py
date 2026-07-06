@@ -41,8 +41,15 @@ CLIP_POS = 0.5
 CLIP_YAW = 0.3
 VMAX = 1.5
 NATIVE_HZ = 30
-# type_mask: set bit = IGNORE -> ignore accel(6,7,8), force(9), yaw_rate(11) => pos+vel+yaw
-USE_POS_VEL_YAW = (7 << 6) | (1 << 9) | (1 << 11)
+# type_mask: set bit = IGNORE. pos+vel+ABSOLUTE-yaw -> ignore accel(6,7,8), force(9), yaw_rate(11)
+USE_POS_VEL_YAW = (7 << 6) | (1 << 9) | (1 << 11)        # 3008
+# pos+vel+YAW-RATE -> ignore accel(6,7,8), force(9), absolute-yaw(10); USE yaw_rate(11).
+# Fix for the real-hardware yaw runaway: the 0.5 s-lookahead absolute-yaw command
+# (yaw = live + dyaw) cumulates when the yaw controller is fast enough to reach the
+# setpoint each tick, mirroring the trajectory (SITL's slow yaw hid it). Commanding the
+# yaw RATE (dyaw / lookahead) integrates once -> correct total turn, slew-independent.
+# Symmetric with the velocity feed-forward we already use for position.
+USE_POS_VEL_YAWRATE = (7 << 6) | (1 << 9) | (1 << 10)    # 1984
 
 # ---- landing triggers (dataset has no landing tail) ----
 DESCENT_MARGIN = 0.4      # m below peak commanded altitude = "losing altitude"
@@ -162,11 +169,12 @@ def poll(m, st):
             st["acks"][msg.command] = msg.result
 
 
-def send_target(m, setpt, v, yaw):
+def send_target(m, setpt, v, yaw=0.0, yaw_rate=0.0, use_rate=False):
+    mask = USE_POS_VEL_YAWRATE if use_rate else USE_POS_VEL_YAW
     m.mav.set_position_target_local_ned_send(
         0, m.target_system, m.target_component,
-        mavutil.mavlink.MAV_FRAME_LOCAL_NED, USE_POS_VEL_YAW,
-        setpt[0], setpt[1], setpt[2], v[0], v[1], v[2], 0, 0, 0, yaw, 0)
+        mavutil.mavlink.MAV_FRAME_LOCAL_NED, mask,
+        setpt[0], setpt[1], setpt[2], v[0], v[1], v[2], 0, 0, 0, yaw, yaw_rate)
 
 
 # ---- preflight gates (ported from x500_first_flight) ----
@@ -331,7 +339,7 @@ def yaw_to(m, st, setpt, yaw_target, timeout=8):
     return True
 
 
-def do_replay(m, st, acts, rec_yaw0, hz, out):
+def do_replay(m, st, acts, rec_yaw0, hz, out, use_yaw_rate=True):
     """Stream the episode through the shim. Returns the reason replay ended."""
     dt = 1.0 / hz
     while st["pos"] is None or st["att"] is None:   # need NED pos + attitude first
@@ -370,8 +378,11 @@ def do_replay(m, st, acts, rec_yaw0, hz, out):
             if nn > VMAX:
                 v *= VMAX / nn
             setpt = setpt + v * dt
-            yaw_cmd = wrap(yaw + dyaw)
-            send_target(m, setpt, v, yaw_cmd)
+            yaw_cmd = wrap(yaw + dyaw)             # notional heading (logged only)
+            if use_yaw_rate:                       # FIX: command yaw RATE, not abs heading
+                send_target(m, setpt, v, yaw_rate=dyaw / LOOKAHEAD_S, use_rate=True)
+            else:
+                send_target(m, setpt, v, yaw=yaw_cmd)
             w.writerow([k, round(time.time() - t0, 4), *act, *setpt, *v, yaw_cmd,
                         *st["pos"], *st["vel"], *st["att"]])
             f.flush()
@@ -441,6 +452,9 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--hover", type=float, default=0.0, help="hover-only baseline N s (no replay)")
     ap.add_argument("--force", action="store_true", help="bypass preflight gates (bench/SITL)")
+    ap.add_argument("--yaw-abs", action="store_true",
+                    help="command absolute yaw=live+dyaw (old behavior; runs away on a fast "
+                         "yaw controller -> mirrored path). Default = yaw RATE (dyaw/lookahead).")
     a = ap.parse_args()
 
     replay = a.hover <= 0
@@ -501,7 +515,7 @@ def main():
     try:
         if replay:
             out = a.out or f"replay_ep{a.episode:03d}_field.csv"
-            do_replay(m, st, acts, rec_yaw0, a.hz, out)
+            do_replay(m, st, acts, rec_yaw0, a.hz, out, use_yaw_rate=not a.yaw_abs)
         else:
             do_hover(m, st, a.hover)
     finally:
