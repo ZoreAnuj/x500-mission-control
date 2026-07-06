@@ -44,7 +44,7 @@ ax1.legend(loc="upper left"); ax1.set_title("altitude (rel)"); ax1.grid(alpha=0.
 allxy = np.vstack([sp[:, :2], p[:, :2]])
 ce = (allxy[:, 1].min() + allxy[:, 1].max()) / 2
 cn = (allxy[:, 0].min() + allxy[:, 0].max()) / 2
-half = max(allxy[:, 1].ptp(), allxy[:, 0].ptp()) / 2 + 0.5
+half = max(np.ptp(allxy[:, 1]), np.ptp(allxy[:, 0])) / 2 + 0.5
 ax0.set_xlim(ce - half, ce + half)
 ax0.set_ylim(cn - half, cn + half)
 ax0.set_aspect("equal", adjustable="box")
