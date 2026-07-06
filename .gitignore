@@ -19,3 +19,6 @@ Thumbs.db
 
 # Run outputs (generated: CSVs, plots, videos)
 runs/
+
+# Camera fisheye calibration (per-device, generated)
+calib.npz
