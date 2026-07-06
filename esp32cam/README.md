@@ -1,22 +1,34 @@
-# ESP32-CAM (OV2640, 160° lens) → Drone Hoop policy feed
+# Freenove ESP32-S3 CAM (OV2640, 160° lens) → Drone Hoop policy feed
 
-Configures the onboard ESP32-CAM to stream **320×240 (QVGA) at ~30 fps** — the sim
-front-camera resolution — and remaps its wide lens to the sim's **~80° rectilinear** FOV.
+Configures the onboard **Freenove ESP32-S3-WROOM CAM** to stream **320×240 (QVGA) at ~30 fps**
+— the sim front-camera resolution — and remaps its wide lens to the sim's **~80° rectilinear** FOV.
+
+**Status: flashed & running** — the board broadcasts WiFi `dronecam` / `dronecam123` and streams at
+`http://192.168.4.1:81/stream` (boot log confirmed `esp_camera_init()` OK on the S3).
 
 ## Files
-- `esp32cam_policy_stream.ino` — flash to the ESP32-CAM. QVGA / JPEG / 20 MHz / `fb_count=2`
-  / `GRAB_LATEST`, SoftAP `dronecam`. Stream: `http://192.168.4.1:81/stream`.
+- `esp32cam_policy_stream/esp32cam_policy_stream.ino` — the firmware. QVGA / JPEG / 20 MHz /
+  `fb_count=2` / `GRAB_LATEST`, SoftAP `dronecam`. Freenove S3 (ESP32S3_EYE) pin map.
 - `calibrate_fisheye.py` — calibrate the fisheye → `calib.npz` (do this once).
 - `esp32cam_capture.py` — grab newest frame + undistort to 80° pinhole (feeds the policy).
 
-## 1. Flash
-Arduino IDE → Board **"AI Thinker ESP32-CAM"**, PSRAM **enabled**. Open the `.ino`, set
-`AP_SSID`/`AP_PASS` if you like, upload (GPIO0→GND to enter flash mode, then reset).
-Serial @115200 prints the stream URL.
+## 1. Flash (Freenove ESP32-S3-WROOM CAM)
+The USB-C port is a **CH343 UART** bridge (install the WCH CH343 driver if no COM port shows up).
+Auto-reset works — **no BOOT-button needed**. Board settings: **ESP32S3 Dev Module**, **PSRAM = OPI**,
+**Flash 16 MB**, **Partition "Huge APP"**, **USB CDC On Boot = Disabled** (so Serial → the CH343 port).
+
+Headless with `arduino-cli` (esp32 core ≥ 3.x):
+```
+FQBN=esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,FlashMode=qio,PartitionScheme=huge_app,CDCOnBoot=default,USBMode=hwcdc,UploadMode=default,UploadSpeed=921600
+arduino-cli compile --fqbn "$FQBN" esp32cam_policy_stream
+arduino-cli upload  --fqbn "$FQBN" -p COM12 esp32cam_policy_stream
+```
+Or open `esp32cam_policy_stream/esp32cam_policy_stream.ino` in Arduino IDE with those Tools settings
+and hit Upload. Serial @115200 on the CH343 port prints the stream URL.
 
 ## 2. Verify
 Join WiFi `dronecam`, open `http://192.168.4.1:81/stream` in a browser — should be ~30 fps.
-If frames stripe or you see *"Failed to get frame on time"*, set `xclk_freq_hz = 10000000`.
+If frames stripe or you see *"Failed to get frame on time"*, set `xclk_freq_hz = 10000000` in the sketch.
 
 ## 3. Capture into Python
 ```
@@ -45,11 +57,10 @@ randomization in sim and/or DAgger on the real undistorted frames.
 
 ## Gotchas (from field reports)
 - **Brownout:** camera+WiFi peaks ~500 mA. Feed 5 V from a solid ≥1 A BEC with a **330 µF cap
-  across 5V/GND** at the module. The sketch masks the detector, but *fix the supply* on a
-  flying vehicle — don't rely on the mask.
+  across 5V/GND** at the module (the S3 sketch does not mask the detector — fix the supply).
 - **RF interference:** the camera flex radiates broadband noise and can **jam GPS** within
   ~7–15 cm. Keep the module/flex ≥15 cm from GPS and away from the Pixhawk/compass.
-- **WiFi:** ESP32-CAM is 2.4 GHz, weak antenna — fine for close hoop work, marginal at range.
-  SiK telemetry (433/915 MHz) doesn't clash; 2.4 GHz RC would.
+- **WiFi:** the ESP32-S3 is 2.4 GHz, weak chip antenna — fine for close hoop work, marginal at
+  range. SiK telemetry (433/915 MHz) doesn't clash; 2.4 GHz RC would.
 - **Orientation:** mount forward-facing, rigid (JPEG smears on vibration). Match training
   orientation with `set_vflip`/`set_hmirror` in the sketch (live gRPC frames were upside-down).

@@ -1,39 +1,38 @@
-// ESP32-CAM (AI-Thinker, OV2640) -> QVGA 320x240 JPEG MJPEG stream for the Drone Hoop policy.
+// Freenove ESP32-S3-WROOM CAM (OV2640) -> QVGA 320x240 JPEG MJPEG stream for the Drone Hoop policy.
 // Matches the sim front-camera resolution. SoftAP so the companion Pi joins directly (one hop).
-// Stream URL after boot (Serial @115200): http://192.168.4.1:81/stream
+// Stream URL after boot (Serial @115200 on the CH343/COM port): http://192.168.4.1:81/stream
 //
-// Arduino IDE: Board = "AI Thinker ESP32-CAM", PSRAM enabled. See README.md for flashing + FOV match.
+// Board = "ESP32S3 Dev Module", PSRAM = "OPI PSRAM", Flash 16MB, Partition "Huge APP",
+// USB CDC On Boot = Disabled (Serial -> CH343 UART). See ../README.md for flashing + FOV match.
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include <WiFi.h>
-#include "soc/soc.h"
-#include "soc/rtc_cntl_reg.h"
 
 const char* AP_SSID = "dronecam";
 const char* AP_PASS = "dronecam123";        // >= 8 chars
 
-// --- AI-Thinker OV2640 pin map ---
-#define PWDN_GPIO_NUM 32
+// --- Freenove ESP32-S3-WROOM CAM OV2640 pin map (== ESP32S3_EYE; verified vs Espressif camera_pins.h) ---
+#define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
-#define XCLK_GPIO_NUM 0
-#define SIOD_GPIO_NUM 26
-#define SIOC_GPIO_NUM 27
-#define Y9_GPIO_NUM 35
-#define Y8_GPIO_NUM 34
-#define Y7_GPIO_NUM 39
-#define Y6_GPIO_NUM 36
-#define Y5_GPIO_NUM 21
-#define Y4_GPIO_NUM 19
-#define Y3_GPIO_NUM 18
-#define Y2_GPIO_NUM 5
-#define VSYNC_GPIO_NUM 25
-#define HREF_GPIO_NUM 23
-#define PCLK_GPIO_NUM 22
+#define XCLK_GPIO_NUM 15
+#define SIOD_GPIO_NUM 4
+#define SIOC_GPIO_NUM 5
+#define Y9_GPIO_NUM 16
+#define Y8_GPIO_NUM 17
+#define Y7_GPIO_NUM 18
+#define Y6_GPIO_NUM 12
+#define Y5_GPIO_NUM 10
+#define Y4_GPIO_NUM 8
+#define Y3_GPIO_NUM 9
+#define Y2_GPIO_NUM 11
+#define VSYNC_GPIO_NUM 6
+#define HREF_GPIO_NUM 7
+#define PCLK_GPIO_NUM 13
 
 #define PART_BOUNDARY "frame"
-static const char* CT   = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
-static const char* BND  = "\r\n--" PART_BOUNDARY "\r\n";
-static const char* HDR  = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+static const char* CT  = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+static const char* BND = "\r\n--" PART_BOUNDARY "\r\n";
+static const char* HDR = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
 httpd_handle_t stream_httpd = NULL;
 
 static esp_err_t stream_handler(httpd_req_t *req) {
@@ -65,7 +64,6 @@ void startCameraServer() {
 }
 
 void setup() {
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);   // MASKS brownout — still fix the 5V supply (README gotchas)
   Serial.begin(115200);
 
   camera_config_t config = {};
