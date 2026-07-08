@@ -8,6 +8,19 @@ Everything here was built and **tested against real hardware** on Windows, with 
 
 ---
 
+## TODO — next flights (in order, each gates the next)
+
+1. **[ ] Yaw-fix A/B test** — confirm the yaw-rate fix on hardware: `field_replay.py --episode 276`
+   (default, expect **West**) vs `--yaw-abs` (expect the old **East** mirror). Details in [`TODO.md`](TODO.md).
+2. **[ ] Pipeline check (bench, props off)** — ESP32 cam on WiFi `Ketu` streaming; `esp32cam_capture.py`
+   shows RAW | CALIBRATED with the real `calib.npz`; orientation matches training (vflip); drone
+   telemetry + camera feed running side-by-side without starving the SiK link.
+3. **[ ] First policy flight** — `field_infer.py --connect COM13 --cam-url http://192.168.4.1:81/stream`
+   (CMEncIMLE ep010, desk-verified: offline actions PASS, SITL dry run PASS, ENTER=land verified live).
+   Drone placed ~5 m from the hoop, facing it. Flight card in [`TODO.md`](TODO.md).
+
+---
+
 ## What's inside
 
 | Part | What it does |
