@@ -17,9 +17,10 @@ import time
 import cv2
 import numpy as np
 
-# --- sim front-camera target: 320x240, 80-deg HFOV, pinhole ---
-W, H, HFOV_DEG = 320, 240, 80.0
-f = (W / 2) / np.tan(np.radians(HFOV_DEG) / 2)          # ~191 px
+# --- sim front-camera target: 320x240, 80-deg VERTICAL FOV (Hazel PerspectiveFOV is
+# vertical; SceneCamera.h SetDegPerspectiveVerticalFOV) -> HFOV ~96.3 deg at 4:3 ---
+W, H, VFOV_DEG = 320, 240, 80.0
+f = (H / 2) / np.tan(np.radians(VFOV_DEG) / 2)          # ~143 px (fx = fy, square pixels)
 K_NEW = np.array([[f, 0, W / 2], [0, f, H / 2], [0, 0, 1]])
 
 # --- fisheye intrinsics: from calibrate_fisheye.py, else a rough placeholder ---
@@ -58,7 +59,7 @@ def calibrated(fr, map1, map2):
     """Best available FOV-matched view: real undistort if calibrated, else a labeled crop approx."""
     if map1 is not None:
         return cv2.remap(fr, map1, map2, cv2.INTER_LINEAR), "CALIBRATED (undistorted 80deg)"
-    ch, cw = int(H * 0.5), int(W * 0.5)          # keep central ~50% (approx 80-deg of a 160-deg lens)
+    ch, cw = int(H * 0.67), int(W * 0.60)        # rough central crop toward VFOV80/HFOV96 target
     y0, x0 = (H - ch) // 2, (W - cw) // 2
     out = cv2.resize(fr[y0:y0 + ch, x0:x0 + cw], (W, H))
     return out, "CROP APPROX (no calib.npz yet)"
