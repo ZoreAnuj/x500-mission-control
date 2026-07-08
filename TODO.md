@@ -22,3 +22,18 @@ The ep276 replay flew the **East-mirror** of the sim because the yaw command ran
 
 Once **A flies West**, the yaw-rate shim is validated → carry it into the Phase-3 policy loop
 (the policy emits only Δyaw, so it needs this same fix).
+
+## Policy inference (`field_infer.py`) — READY, gated on the yaw-fix flight above
+Desk-verified 2026-07-08 (see `docs/`/commit message):
+- offline: ep010 vs dataset actions on training frames — dx corr 0.999 / dz 0.953 / dyaw 0.939, PASS
+- SITL dry run (dataset video as camera): 250 ticks @ 10.0 Hz, inference 5.7 ms mean,
+  track err 0.07 m, −4 m ceiling clamp held, yaw-rate FF exercised, clean NAV_LAND
+- real-ESP32-frame fisheye remap: 100% coverage, geometry sane
+
+First real inference flight (AFTER A/B passes):
+- [ ] ESP32 cam powered, WiFi `Ketu` up, PC joined; `python esp32cam_capture.py` sanity view
+- [ ] Place drone ~5 m from hoop, FACING it (sim yawed to hoop; real has no hoop NED)
+- [ ] `python field_infer.py --connect COM13 --cam-url http://192.168.4.1:81/stream --hz 10 --alt 1.4 --max-secs 30`
+- [ ] GO gate → ENTER=land anytime; watch for the climb-and-scan then approach
+- SITL gotcha: run SITL clients INSIDE WSL — a Windows client through the localhost relay
+  makes SITL exit code 1 on connect (serial0 disconnect is fatal to it)
