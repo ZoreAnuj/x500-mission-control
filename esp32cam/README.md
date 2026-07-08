@@ -33,8 +33,13 @@ If frames stripe or you see *"Failed to get frame on time"*, set `xclk_freq_hz =
 ## 3. Capture into Python
 ```
 pip install opencv-python numpy
-python esp32cam_capture.py --crop        # quick, no calibration (approx 80°)
+python esp32cam_capture.py               # pops up RAW | CALIBRATED side-by-side, live, q=quit
 ```
+Default view is a live OpenCV window with the raw feed and the FOV-matched feed side-by-side
+(labeled, with fps). Before `calibrate_fisheye.py` has been run it shows a center-crop
+approximation on the right and says so on-screen; after calibrating it shows the real
+undistorted 80° view. Single-view modes: `--raw`, `--crop`, `--undistort`.
+
 Uses a drop-old-frames grab thread so you always read the freshest frame (~100–250 ms
 glass-to-Python over MJPEG). If that latency blocks closed-loop control later, switch to a
 UDP/packet-injection firmware (`esp32-cam-fpv`, ~20–50 ms).
