@@ -40,9 +40,12 @@ CX, CY = W / 2, H / 2
 F_PX = 143.0                  # rectilinear focal (sim CameraFront VFOV80; undistort target)
 HOOP_OUTER_M = 1.092
 
-# HSV defaults from the sim-hoop probe (dark maroon needs V floor ~25). --tune to recal.
-HSV1_LO, HSV1_HI = (0, 60, 25), (12, 255, 255)
-HSV2_LO, HSV2_HI = (168, 60, 25), (180, 255, 255)
+# HSV defaults measured on the REAL hoop photo + sim probe. The real paint is true red
+# H~178 / S~172; brown wood-floor false positives sit at H~15 / S<=104 -> S floor 90
+# separates them (kept a touch low vs the mat's p95 for outdoor specular desaturation).
+# Sim maroon: H~0-8, S high, V floor ~25. Always sanity-check with --tune on site.
+HSV1_LO, HSV1_HI = (0, 90, 25), (10, 255, 255)
+HSV2_LO, HSV2_HI = (168, 90, 25), (180, 255, 255)
 
 # detector gates / tracking
 MIN_AREA_PX = 15
@@ -127,7 +130,8 @@ class VideoSrc:
 # ---- detector ----
 
 class HoopDetector:
-    def __init__(self, lo1, hi1, lo2, hi2):
+    def __init__(self, lo1, hi1, lo2, hi2, outer_m=HOOP_OUTER_M):
+        self.outer_m = outer_m
         self.b = (np.array(lo1), np.array(hi1), np.array(lo2), np.array(hi2))
         self.cx = self.cy = self.major = None
         self.hits = 0
@@ -138,17 +142,36 @@ class HoopDetector:
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
         lo1, hi1, lo2, hi2 = self.b
         m = cv2.inRange(hsv, lo1, hi1) | cv2.inRange(hsv, lo2, hi2)
+        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))  # kill speckle
         return cv2.morphologyEx(m, cv2.MORPH_CLOSE, self.kernel)
 
     def detect(self, bgr):
-        """Returns (detected, err_x, err_y, major_px, range_m)."""
+        """Returns (detected, err_x, err_y, major_px, range_m).
+
+        Fits the ellipse over the UNION of red contours near the largest one: the real
+        hoop's dark corner brackets + mount gap break the ring into arcs, and a
+        single-contour fit on a 'C' shape badly underestimates size/center."""
         m = self.mask(bgr)
         cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cnts = [c for c in cnts if cv2.contourArea(c) >= MIN_AREA_PX and len(c) >= 5]
         got = False
         if cnts:
-            c = max(cnts, key=cv2.contourArea)
-            if cv2.contourArea(c) >= MIN_AREA_PX and len(c) >= 5:
-                (x, y), (MA, ma), _ = cv2.fitEllipse(c)
+            big = max(cnts, key=cv2.contourArea)
+            area_big = cv2.contourArea(big)
+            bx, by, bw, bh = cv2.boundingRect(big)
+            bcx, bcy = bx + bw / 2, by + bh / 2
+            r_near = 1.6 * math.hypot(bw, bh)          # gathers ring arcs, rejects far blobs
+            join_min = max(2 * MIN_AREA_PX, 0.02 * area_big)   # speckle can't join the fit
+            pts = [big.reshape(-1, 2)]
+            for c in cnts:
+                if c is big or cv2.contourArea(c) < join_min:
+                    continue
+                x, y, w_, h_ = cv2.boundingRect(c)
+                if math.hypot(x + w_ / 2 - bcx, y + h_ / 2 - bcy) < r_near:
+                    pts.append(c.reshape(-1, 2))
+            u = np.vstack(pts).astype(np.float32)
+            if len(u) >= 5:
+                (x, y), (MA, ma), _ = cv2.fitEllipse(u)
                 major, minor = max(MA, ma), max(min(MA, ma), 1e-3)
                 if major / minor <= MAX_ASPECT or major > 0.5 * W:   # partial views distort
                     if self.cx is None:
@@ -166,7 +189,7 @@ class HoopDetector:
             self.hits = 0
         if self.cx is None:
             return False, 0.0, 0.0, 0.0, float("inf")
-        rng = F_PX * HOOP_OUTER_M / max(self.major, 1e-3)
+        rng = F_PX * self.outer_m / max(self.major, 1e-3)
         return got, self.cx - CX, self.cy - CY, self.major, rng
 
     @property
@@ -181,8 +204,8 @@ def tune(cam):
     """Live HSV trackbars; prints the final CLI string. q quits."""
     win = "tune (q=quit)"
     cv2.namedWindow(win)
-    for name, val, mx in (("H1_hi", 12, 40), ("H2_lo", 168, 180),
-                          ("S_min", 60, 255), ("V_min", 25, 255)):
+    for name, val, mx in (("H1_hi", 10, 40), ("H2_lo", 168, 180),
+                          ("S_min", 90, 255), ("V_min", 25, 255)):
         cv2.createTrackbar(name, win, val, mx, lambda _: None)
     while True:
         fr = cam.read()
@@ -216,7 +239,9 @@ def main():
     ap.add_argument("--calib", default=str(Path(__file__).resolve().parent.parent
                                            / "esp32cam" / "calib.npz"))
     ap.add_argument("--hsv", default=None, metavar="H1HI,H2LO,SMIN,VMIN",
-                    help="from --tune (default 12,168,60,25)")
+                    help="from --tune (default 20,168,50,25)")
+    ap.add_argument("--hoop-dia", type=float, default=HOOP_OUTER_M,
+                    help="real hoop OUTER diameter m (drives the range estimate)")
     ap.add_argument("--hz", type=float, default=10.0)
     ap.add_argument("--alt", type=float, default=1.5)
     ap.add_argument("--vapp", type=float, default=0.5, help="approach speed m/s")
@@ -236,9 +261,10 @@ def main():
         return
     if a.hsv:
         h1, h2, s, v = (int(x) for x in a.hsv.split(","))
-        det = HoopDetector((0, s, v), (h1, 255, 255), (h2, s, v), (180, 255, 255))
+        det = HoopDetector((0, s, v), (h1, 255, 255), (h2, s, v), (180, 255, 255),
+                           outer_m=a.hoop_dia)
     else:
-        det = HoopDetector(HSV1_LO, HSV1_HI, HSV2_LO, HSV2_HI)
+        det = HoopDetector(HSV1_LO, HSV1_HI, HSV2_LO, HSV2_HI, outer_m=a.hoop_dia)
 
     print("-- waiting for camera...")
     t0 = time.time()
