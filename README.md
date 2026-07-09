@@ -18,6 +18,9 @@ Everything here was built and **tested against real hardware** on Windows, with 
 3. **[ ] First policy flight** — `field_infer.py --connect COM13 --cam-url http://192.168.4.1:81/stream`
    (CMEncIMLE ep010, desk-verified: offline actions PASS, SITL dry run PASS, ENTER=land verified live).
    Drone placed ~5 m from the hoop, facing it. Flight card in [`TODO.md`](TODO.md).
+4. **[ ] CV baseline flight (alternative to 3, same gates)** — `cv_hoop_pass.py`: classical
+   HSV-detect -> yaw-scan -> center -> approach -> blind dash -> land. Run
+   `cv_hoop_pass.py --tune --cam-url ...` against the real hoop FIRST to calibrate color.
 
 ---
 
