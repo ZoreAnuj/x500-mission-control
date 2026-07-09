@@ -8,8 +8,11 @@
 #include "esp_http_server.h"
 #include <WiFi.h>
 
-const char* AP_SSID = "dronecam";
-const char* AP_PASS = "dronecam123";        // >= 8 chars
+// As flashed on the drone's Freenove S3 (2026-07-08). "Ketu" is deliberately unique:
+// an SSID that matches a nearby home/router network (we hit this with "zero") makes
+// devices join the wrong net and 192.168.4.1 times out.
+const char* AP_SSID = "Ketu";
+const char* AP_PASS = "12345678";           // >= 8 chars
 
 // --- Freenove ESP32-S3-WROOM CAM OV2640 pin map (== ESP32S3_EYE; verified vs Espressif camera_pins.h) ---
 #define PWDN_GPIO_NUM -1
@@ -90,6 +93,7 @@ void setup() {
 
   WiFi.softAP(AP_SSID, AP_PASS);
   Serial.print("stream: http://"); Serial.print(WiFi.softAPIP()); Serial.println(":81/stream");
+  Serial.print("AP SSID: "); Serial.println(AP_SSID);
   startCameraServer();
 }
 

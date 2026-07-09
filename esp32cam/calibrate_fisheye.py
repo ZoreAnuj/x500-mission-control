@@ -163,7 +163,7 @@ def main():
 
         # ---- status text (shared) ----
         if result is None:
-            cam = "DETECTED" if found else ("no board in view" if have_stream else "NO STREAM (dronecam wifi + cam on?)")
+            cam = "DETECTED" if found else ("no board in view" if have_stream else "NO STREAM (Ketu wifi + cam on?)")
             msg = f"captured {len(objpts)}/{a.target}   cam: {cam}   " + \
                   ("SPACE=grab " if a.manual else "auto-grab ") + "C=calibrate R=reset Q=quit"
             color = (0, 255, 0) if found else (0, 165, 255)
@@ -185,7 +185,7 @@ def main():
         else:
             view = np.zeros((H, W, 3), np.uint8)
             cv2.putText(view, "NO STREAM", (95, 110), FONT, 0.7, (0, 80, 255), 2)
-            cv2.putText(view, "join dronecam wifi + power cam", (28, 138), FONT, 0.4, (0, 140, 255), 1)
+            cv2.putText(view, "join Ketu wifi + power cam", (28, 138), FONT, 0.4, (0, 140, 255), 1)
         view = cv2.resize(view, (W * 2, H * 2), interpolation=cv2.INTER_NEAREST)
         cv2.putText(view, msg, (8, 20), FONT, 0.42, color, 1)
         cv2.imshow(win_feed, view)

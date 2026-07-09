@@ -3,12 +3,12 @@
 Configures the onboard **Freenove ESP32-S3-WROOM CAM** to stream **320×240 (QVGA) at ~30 fps**
 — the sim front-camera resolution — and remaps its wide lens to the sim's **~80° rectilinear** FOV.
 
-**Status: flashed & running** — the board broadcasts WiFi `dronecam` / `dronecam123` and streams at
+**Status: flashed & running** — the board broadcasts WiFi `Ketu` / `12345678` and streams at
 `http://192.168.4.1:81/stream` (boot log confirmed `esp_camera_init()` OK on the S3).
 
 ## Files
 - `esp32cam_policy_stream/esp32cam_policy_stream.ino` — the firmware. QVGA / JPEG / 20 MHz /
-  `fb_count=2` / `GRAB_LATEST`, SoftAP `dronecam`. Freenove S3 (ESP32S3_EYE) pin map.
+  `fb_count=2` / `GRAB_LATEST`, SoftAP `Ketu`. Freenove S3 (ESP32S3_EYE) pin map.
 - `calibrate_fisheye.py` — calibrate the fisheye → `calib.npz` (do this once).
 - `esp32cam_capture.py` — grab newest frame + undistort to 80° pinhole (feeds the policy).
 
@@ -27,7 +27,7 @@ Or open `esp32cam_policy_stream/esp32cam_policy_stream.ino` in Arduino IDE with 
 and hit Upload. Serial @115200 on the CH343 port prints the stream URL.
 
 ## 2. Verify
-Join WiFi `dronecam`, open `http://192.168.4.1:81/stream` in a browser — should be ~30 fps.
+Join WiFi `Ketu`, open `http://192.168.4.1:81/stream` in a browser — should be ~30 fps.
 If frames stripe or you see *"Failed to get frame on time"*, set `xclk_freq_hz = 10000000` in the sketch.
 
 ## 3. Capture into Python
