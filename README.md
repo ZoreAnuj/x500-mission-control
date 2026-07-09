@@ -19,8 +19,14 @@ Everything here was built and **tested against real hardware** on Windows, with 
    (CMEncIMLE ep010, desk-verified: offline actions PASS, SITL dry run PASS, ENTER=land verified live).
    Drone placed ~5 m from the hoop, facing it. Flight card in [`TODO.md`](TODO.md).
 4. **[ ] CV baseline flight (alternative to 3, same gates)** — `cv_hoop_pass.py`: classical
-   HSV-detect -> yaw-scan -> center -> approach -> blind dash -> land. Run
-   `cv_hoop_pass.py --tune --cam-url ...` against the real hoop FIRST to calibrate color.
+   HSV-detect -> yaw-scan -> center -> approach -> blind dash -> land.
+   Pre-flight, in order (details in [`TODO.md`](TODO.md)):
+   - [ ] `--tune --cam-url ...` against the real hoop in real light (defaults measured
+         on the indoor photo; outdoor sun shifts hue/exposure)
+   - [ ] **Mirror check**: wave a hand on the drone's RIGHT — it must appear on the
+         image RIGHT. If mirrored, the yaw servo inverts (reflash with `set_hmirror(1)`).
+   - [ ] Pass the built hoop's true outer diameter via `--hoop-dia` (drives the
+         range estimate + blind-dash trigger; default 1.092 m)
 
 ---
 

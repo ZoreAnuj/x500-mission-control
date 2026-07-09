@@ -30,6 +30,17 @@ Desk-verified 2026-07-08 (see `docs/`/commit message):
   track err 0.07 m, −4 m ceiling clamp held, yaw-rate FF exercised, clean NAV_LAND
 - real-ESP32-frame fisheye remap: 100% coverage, geometry sane
 
+## CV baseline flight (`cv_hoop_pass.py`) — desk-reviewed 2026-07-09
+Review found + fixed a mission-fatal inverted yaw-servo sign (hoop right -> yawed left);
+all 4 servo directions now verified on synthetic frames. Field-only assumptions to check:
+- [ ] `--tune` on the real hoop in real light (indoor-photo defaults: H 0-10+168-180, S>=90, V>=25)
+- [ ] Hand-wave mirror check (right hand -> image right), else yaw servo inverts
+- [ ] `--hoop-dia <m>` = the built hoop's real outer diameter
+- [ ] ESP32 auto-exposure sanity outdoors (watch the --tune preview for blowout)
+- Wind note: SCAN/CENTER hold zero *velocity*, not position -- drift is bounded only by
+  the 12 m radius guard; pick a calm window for the first try
+- [ ] Fly: `python cv_hoop_pass.py --connect COM13 --cam-url http://192.168.4.1:81/stream --hoop-dia <m>`
+
 First real inference flight (AFTER A/B passes):
 - [ ] ESP32 cam powered, WiFi `Ketu` up, PC joined; `python esp32cam_capture.py` sanity view
 - [ ] Place drone ~5 m from hoop, FACING it (sim yawed to hoop; real has no hoop NED)

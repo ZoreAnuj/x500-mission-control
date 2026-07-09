@@ -311,7 +311,11 @@ def main():
 
 def run(m, st, cam, det, a):
     dt = 1.0 / a.hz
-    take = st["pos"].copy() if st["pos"] is not None else np.zeros(3)
+    while st["pos"] is None or st["att"] is None:   # need NED pos + attitude first
+        beat(m)
+        poll(m, st)
+        time.sleep(0.05)
+    take = st["pos"].copy()
     state, t_state = "SCAN", time.monotonic()
     center_since = None
     blind_until = None
@@ -363,7 +367,8 @@ def run(m, st, cam, det, a):
                     reason = "lost_twice"
                     break
             else:
-                yr = float(np.clip(-K_PSI * ex, -YAWRATE_MAX, YAWRATE_MAX))
+                # hoop right of center (ex>0) -> yaw RIGHT = positive NED yaw rate
+                yr = float(np.clip(K_PSI * ex, -YAWRATE_MAX, YAWRATE_MAX))
                 vz = float(np.clip(K_Z * ey, -VZ_MAX, VZ_MAX))       # ey<0 (high) -> climb
                 centered = abs(ex) < CENTER_PX and abs(ey) < CENTER_PX
                 if state == "CENTER":
