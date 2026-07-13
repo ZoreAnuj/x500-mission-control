@@ -39,6 +39,7 @@ all 4 servo directions now verified on synthetic frames. Field-only assumptions 
 - [ ] ESP32 auto-exposure sanity outdoors (watch the --tune preview for blowout)
 - Wind note: SCAN/CENTER hold zero *velocity*, not position -- drift is bounded only by
   the 12 m radius guard; pick a calm window for the first try
+- [ ] Teleop re-test: `x500_teleop.py` (setpoint-nudge rewrite) — confirm no up/down swing, no coast-on-release, yaw taps land where expected
 - [ ] Fly: `python cv_hoop_pass.py --connect COM13 --cam-url http://192.168.4.1:81/stream --hoop-dia <m>`
 
 First real inference flight (AFTER A/B passes):

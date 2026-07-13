@@ -115,6 +115,9 @@ def set_failsafe_norc(m):
     print("-- no-RC failsafe: FS_THR_ENABLE=0, FS_GCS_ENABLE=5 (link-loss=LAND)", flush=True)
     set_param(m, "FS_THR_ENABLE", 0)
     set_param(m, "FS_GCS_ENABLE", 5)
+    # learn+save true hover thrust: bad trim (MOT_THST_HOVER=0.6 read high on the first
+    # flight, +0.3 m steady over-climb) makes every vertical maneuver asymmetric/hunty
+    set_param(m, "MOT_HOVER_LEARN", 2)
     beat(m)
 
 
