@@ -50,3 +50,19 @@ only after `esp_camera_init()` succeeds.
    S≥90, V≥25 (V floor keeps the darker sim hoop detectable). Deep-shadow ring segments are
    inseparable from brown floor in HSV — a lit outdoor scene doesn't have this collision, and
    `--tune` exists for site conditions.
+
+## Outdoor exposure blowout (2026-07-09)
+
+First outdoor feed was massively blown out (white bloom across the frame). Two causes stack:
+1. **Physical — check FIRST**: fingerprint/oil or leftover protective film on the lens produces
+   exactly that center veiling glare; sun in/near the wide FOV adds flare. Clean the lens
+   (isopropyl + microfiber), peel any film, and shade it (small hood / mount angle slightly down).
+2. **Sensor AE aimed too bright for full sun.** Firmware now defaults to `ae_level=-2`,
+   `aec2=1`, `gainceiling=2x`, `lenc/bpc/wpc on`, and adds a live-tuning endpoint:
+   `http://192.168.4.1:81/ctrl?var=<name>&val=<n>` — vars: ae_level(-2..2), aec_value(0..1200,
+   switches to manual exposure), aec(0/1), gainceiling(0..6), agc(0/1), wb_mode(0-4),
+   brightness/contrast(-2..2), vflip/hmirror(0/1). Tune on site from any browser on `Ketu`;
+   settings reset on reboot (defaults live in the sketch).
+
+Note for CV: blowout kills the red-hoop mask (saturation collapses in clipped regions) — fix
+exposure BEFORE running `cv_hoop_pass.py --tune`.

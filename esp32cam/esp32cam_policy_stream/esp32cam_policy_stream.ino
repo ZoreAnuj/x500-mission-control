@@ -57,13 +57,44 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   return res;
 }
 
+// Live sensor tuning without reflashing:  GET /ctrl?var=<name>&val=<int>
+// vars: ae_level(-2..2)  aec_value(0..1200, implies manual exposure)  aec(0/1)
+//       gainceiling(0..6 = 2x..128x)  agc(0/1)  wb_mode(0auto 1sunny 2cloudy...)
+//       brightness(-2..2)  contrast(-2..2)  vflip(0/1)  hmirror(0/1)
+static esp_err_t ctrl_handler(httpd_req_t *req) {
+  char buf[96], var[24] = {0}, val[12] = {0};
+  if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
+    httpd_query_key_value(buf, "var", var, sizeof(var));
+    httpd_query_key_value(buf, "val", val, sizeof(val));
+  }
+  sensor_t *s = esp_camera_sensor_get();
+  int v = atoi(val);
+  int ok = -1;
+  if      (!strcmp(var, "ae_level"))    ok = s->set_ae_level(s, v);
+  else if (!strcmp(var, "aec"))         ok = s->set_exposure_ctrl(s, v);
+  else if (!strcmp(var, "aec_value")) { s->set_exposure_ctrl(s, 0); ok = s->set_aec_value(s, v); }
+  else if (!strcmp(var, "gainceiling")) ok = s->set_gainceiling(s, (gainceiling_t)v);
+  else if (!strcmp(var, "agc"))         ok = s->set_gain_ctrl(s, v);
+  else if (!strcmp(var, "wb_mode"))     ok = s->set_wb_mode(s, v);
+  else if (!strcmp(var, "brightness"))  ok = s->set_brightness(s, v);
+  else if (!strcmp(var, "contrast"))    ok = s->set_contrast(s, v);
+  else if (!strcmp(var, "vflip"))       ok = s->set_vflip(s, v);
+  else if (!strcmp(var, "hmirror"))     ok = s->set_hmirror(s, v);
+  httpd_resp_set_type(req, "text/plain");
+  snprintf(buf, sizeof(buf), "%s=%s -> %s\n", var, val, ok == 0 ? "OK" : "ERR");
+  return httpd_resp_send(req, buf, HTTPD_RESP_USE_STRLEN);
+}
+
 void startCameraServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 81;
   config.ctrl_port = 32768;
   httpd_uri_t uri = { .uri = "/stream", .method = HTTP_GET, .handler = stream_handler, .user_ctx = NULL };
-  if (httpd_start(&stream_httpd, &config) == ESP_OK)
+  httpd_uri_t ctl = { .uri = "/ctrl", .method = HTTP_GET, .handler = ctrl_handler, .user_ctx = NULL };
+  if (httpd_start(&stream_httpd, &config) == ESP_OK) {
     httpd_register_uri_handler(stream_httpd, &uri);
+    httpd_register_uri_handler(stream_httpd, &ctl);
+  }
 }
 
 void setup() {
@@ -90,6 +121,13 @@ void setup() {
   sensor_t *s = esp_camera_sensor_get();
   s->set_vflip(s, 1);      // match training orientation (live gRPC frames were upside-down); flip if wrong
   s->set_hmirror(s, 0);
+  // Outdoor exposure defaults: full sun blew the image out with stock AE.
+  s->set_ae_level(s, -2);                      // aim auto-exposure darker
+  s->set_aec2(s, 1);                           // smarter AEC DSP algorithm
+  s->set_gainceiling(s, (gainceiling_t)0);     // cap AGC at 2x (bright scenes need no gain)
+  s->set_lenc(s, 1);                           // lens shading correction
+  s->set_bpc(s, 1); s->set_wpc(s, 1);          // bad/white pixel correction
+  // live re-tuning without reflash: http://192.168.4.1:81/ctrl?var=ae_level&val=-1  etc.
 
   WiFi.softAP(AP_SSID, AP_PASS);
   Serial.print("stream: http://"); Serial.print(WiFi.softAPIP()); Serial.println(":81/stream");
