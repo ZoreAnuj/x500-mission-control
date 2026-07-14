@@ -86,3 +86,27 @@ that fallback + on-site `--tune`; firmware now also defaults `saturation=+2` (tu
 the listing), >=100-deg HFOV — we only need 96.3-deg horizontal for the sim match, so a
 quality ~110-120-deg IR-cut lens beats the filterless 160-deg on every axis (~$8-15).**
 Re-run calibrate_fisheye.py after any lens change (new K/D).
+
+## ESP32 reboots when flight scripts run; 5-10 min to come back (2026-07-09)
+
+**Prime suspect: power sag at arm/motor-spin.** Every control script's first electrical
+event is ARM -> motors spin at MOT_SPIN_ARM -> battery/BEC voltage dips -> the ESP32's
+5 V rail sags -> brownout reset. The camera + WiFi TX bursts already draw ~300-500 mA
+peaks; if the board shares the FC's peripheral 5 V rail (with GPS + radio) it sits near
+the limit even before motors load the pack.
+
+**Why "5-10 minutes" and not 5 seconds:** two amplifiers, both now fixed/instrumented:
+1. FIRMWARE BUG (fixed): camera-init failure returned BEFORE WiFi.softAP -> a brownout
+   that corrupted the OV2640 left the board with NO AP at all until a lucky clean reboot.
+   Now: AP + web server start FIRST (~2 s, always), camera init retries every 3 s, and
+   `/status` reports `reset=BROWNOUT|POWERON|...`, uptime, camera state.
+2. Client re-association: after the AP blinks, laptops/phones wander off to internet WiFi
+   and can take minutes to rejoin `Ketu`. Reconnect manually after any arm event.
+Also: WiFi TX power now capped at 11 dBm (default 19.5) -> ~40% lower current bursts,
+plenty for 5-10 m range.
+
+**Field diagnosis (2 min):** arm the drone with `/status` open -> refresh after the blink:
+`reset=BROWNOUT` confirms power sag (fix: feed the ESP32 from its own 5 V >=1 A BEC with a
+330-470 uF cap at the module, short leads, NOT the FC peripheral rail); `reset=POWERON`
+means the supply actually cut (loose connector / shared switched rail). If it never
+reboots on the bench with props off but does with motors, it's the pack sag.

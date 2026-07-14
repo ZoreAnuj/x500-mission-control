@@ -86,21 +86,44 @@ static esp_err_t ctrl_handler(httpd_req_t *req) {
   return httpd_resp_send(req, buf, HTTPD_RESP_USE_STRLEN);
 }
 
+// /status: reset reason + uptime + camera state -> diagnose field reboots from a browser
+static bool cam_ok = false;
+static const char* reset_reason() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "POWERON";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";        // <-- power sag during arm/flight
+    case ESP_RST_SW: return "SW";
+    case ESP_RST_PANIC: return "PANIC";
+    case ESP_RST_WDT: case ESP_RST_INT_WDT: case ESP_RST_TASK_WDT: return "WATCHDOG";
+    default: return "OTHER";
+  }
+}
+
+static esp_err_t status_handler(httpd_req_t *req) {
+  char buf[160];
+  snprintf(buf, sizeof(buf),
+           "reset=%s uptime_s=%lu camera=%s heap=%u\n",
+           reset_reason(), (unsigned long)(millis() / 1000),
+           cam_ok ? "OK" : "INIT_FAILED_retrying", (unsigned)ESP.getFreeHeap());
+  httpd_resp_set_type(req, "text/plain");
+  return httpd_resp_send(req, buf, HTTPD_RESP_USE_STRLEN);
+}
+
 void startCameraServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 81;
   config.ctrl_port = 32768;
   httpd_uri_t uri = { .uri = "/stream", .method = HTTP_GET, .handler = stream_handler, .user_ctx = NULL };
   httpd_uri_t ctl = { .uri = "/ctrl", .method = HTTP_GET, .handler = ctrl_handler, .user_ctx = NULL };
+  httpd_uri_t sts = { .uri = "/status", .method = HTTP_GET, .handler = status_handler, .user_ctx = NULL };
   if (httpd_start(&stream_httpd, &config) == ESP_OK) {
     httpd_register_uri_handler(stream_httpd, &uri);
     httpd_register_uri_handler(stream_httpd, &ctl);
+    httpd_register_uri_handler(stream_httpd, &sts);
   }
 }
 
-void setup() {
-  Serial.begin(115200);
-
+static bool init_camera() {
   camera_config_t config = {};
   config.ledc_channel = LEDC_CHANNEL_0; config.ledc_timer = LEDC_TIMER_0;
   config.pin_d0=Y2_GPIO_NUM; config.pin_d1=Y3_GPIO_NUM; config.pin_d2=Y4_GPIO_NUM; config.pin_d3=Y5_GPIO_NUM;
@@ -117,7 +140,7 @@ void setup() {
   config.fb_count     = 2;                     // needs PSRAM (double-buffer)
   if (!psramFound()) { config.fb_count = 1; config.fb_location = CAMERA_FB_IN_DRAM; }
 
-  if (esp_camera_init(&config) != ESP_OK) { Serial.println("camera init FAILED"); return; }
+  if (esp_camera_init(&config) != ESP_OK) return false;
 
   sensor_t *s = esp_camera_sensor_get();
   s->set_vflip(s, 1);      // match training orientation (live gRPC frames were upside-down); flip if wrong
@@ -128,14 +151,33 @@ void setup() {
   s->set_gainceiling(s, (gainceiling_t)0);     // cap AGC at 2x (bright scenes need no gain)
   s->set_lenc(s, 1);                           // lens shading correction
   s->set_bpc(s, 1); s->set_wpc(s, 1);          // bad/white pixel correction
-  s->set_saturation(s, 2);                     // the IR-cut-less wide lens washes color badly;
-                                               // boost chroma (real fix = IR-cut lens, NOTES.md)
-  // live re-tuning without reflash: http://192.168.4.1:81/ctrl?var=ae_level&val=-1  etc.
+  s->set_saturation(s, 2);                     // IR-cut-less lens washes color (see NOTES.md)
+  return true;
+}
 
+void setup() {
+  Serial.begin(115200);
+  Serial.print("reset reason: "); Serial.println(reset_reason());
+
+  // AP + web server come up FIRST (~2 s) regardless of camera health: a power dip that
+  // corrupts the OV2640 must not leave the board invisible. /status tells you why.
   WiFi.softAP(AP_SSID, AP_PASS);
+  WiFi.setTxPower(WIFI_POWER_11dBm);   // 5-10 m range needs far less than the 19.5 dBm
+                                       // default; cuts WiFi TX current bursts ~40%
   Serial.print("stream: http://"); Serial.print(WiFi.softAPIP()); Serial.println(":81/stream");
   Serial.print("AP SSID: "); Serial.println(AP_SSID);
   startCameraServer();
+
+  cam_ok = init_camera();
+  Serial.println(cam_ok ? "camera OK" : "camera init FAILED (will retry)");
 }
 
-void loop() { delay(1000); }
+void loop() {
+  if (!cam_ok) {                       // e.g. sensor corrupted by a brownout: keep retrying
+    esp_camera_deinit();
+    delay(3000);
+    cam_ok = init_camera();
+    Serial.println(cam_ok ? "camera recovered" : "camera retry failed");
+  }
+  delay(1000);
+}
