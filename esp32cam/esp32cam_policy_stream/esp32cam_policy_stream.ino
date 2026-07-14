@@ -78,6 +78,7 @@ static esp_err_t ctrl_handler(httpd_req_t *req) {
   else if (!strcmp(var, "wb_mode"))     ok = s->set_wb_mode(s, v);
   else if (!strcmp(var, "brightness"))  ok = s->set_brightness(s, v);
   else if (!strcmp(var, "contrast"))    ok = s->set_contrast(s, v);
+  else if (!strcmp(var, "saturation"))  ok = s->set_saturation(s, v);
   else if (!strcmp(var, "vflip"))       ok = s->set_vflip(s, v);
   else if (!strcmp(var, "hmirror"))     ok = s->set_hmirror(s, v);
   httpd_resp_set_type(req, "text/plain");
@@ -127,6 +128,8 @@ void setup() {
   s->set_gainceiling(s, (gainceiling_t)0);     // cap AGC at 2x (bright scenes need no gain)
   s->set_lenc(s, 1);                           // lens shading correction
   s->set_bpc(s, 1); s->set_wpc(s, 1);          // bad/white pixel correction
+  s->set_saturation(s, 2);                     // the IR-cut-less wide lens washes color badly;
+                                               // boost chroma (real fix = IR-cut lens, NOTES.md)
   // live re-tuning without reflash: http://192.168.4.1:81/ctrl?var=ae_level&val=-1  etc.
 
   WiFi.softAP(AP_SSID, AP_PASS);

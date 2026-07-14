@@ -66,3 +66,23 @@ First outdoor feed was massively blown out (white bloom across the frame). Two c
 
 Note for CV: blowout kills the red-hoop mask (saturation collapses in clipped regions) — fix
 exposure BEFORE running `cv_hoop_pass.py --tune`.
+
+## Missing color = NO IR-CUT FILTER on the wide lens (2026-07-09, field video)
+
+`cam_20260709_201423.mp4` (real field, hoop installed): not overexposed (V~127, 2% clipped)
+but saturation dead flat (scene S mean 14-17 vs a normal outdoor 60-150). Signature is
+textbook near-infrared contamination: foliage renders pale purple-white (chlorophyll is
+bright in NIR), grass bone-gray, the red hoop washed PINK. Aftermarket 160-deg lenses
+usually omit the IR-cut filter that stock OV2640 lenses have. **Software cannot remove
+mixed-in IR.** Confirm with a TV remote: its LED will glow bright white on the feed.
+
+**Measured hoop under IR contamination:** H 168-178 (hue survives), S only 25-53 (median 33),
+V 66-225. `cv_hoop_pass` defaults (S>=90) DO NOT detect it; IR-adapted bands
+(`--hsv 15,160,25,60`) detect cleanly on the field video. Until the lens is fixed, fly with
+that fallback + on-site `--tune`; firmware now also defaults `saturation=+2` (tunable live:
+`/ctrl?var=saturation&val=2`) to claw back chroma margin.
+
+**Real fix: replace the M12 lens with one that HAS an IR-cut filter ("650nm IR filter" in
+the listing), >=100-deg HFOV — we only need 96.3-deg horizontal for the sim match, so a
+quality ~110-120-deg IR-cut lens beats the filterless 160-deg on every axis (~$8-15).**
+Re-run calibrate_fisheye.py after any lens change (new K/D).
